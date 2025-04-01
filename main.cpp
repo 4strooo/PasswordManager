@@ -3,6 +3,7 @@
 #include <locale> // Til ekstra UTF-8 support for Æ, Ø, Å
 #include "console.h" // Til bedre output muligheder i konsol (warning, colors osv)
 #include "encrypter.h"
+#include "sqlite3.h" // SQLite database library
 
 // Forward declaration (så passwordManager.cpp ved at funktionen parseCommand findes et sted)
 void parseCommand(const std::string& input);
@@ -80,6 +81,53 @@ void showDatabaseMenu() {
 
 }
 
+
+int main() {
+    sqlite3* db;
+    sqlite3_open("test.db", &db); //create database
+
+    if (sqlite3_open("test.db", &db) == SQLITE_OK) {
+        std::cout << "Database opened successfully!" << std::endl;
+
+
+        //SQL Add 
+
+        const char* sql = "CREATE TABLE logins ("
+            "login_navn TEXT PRIMARY KEY, "
+            "password TEXT, "
+            "username TEXT, "
+            "email TEXT);";
+
+        const char* insertDataSQL = "INSERT INTO logins (login_navn, password, username, email) VALUES "
+            "('Minecraft', 'password1234', 'Notch', 'notch@mojang.com');";
+
+        //sqlite3_exec(db, sql, 0, 0, nullptr);
+        sqlite3_exec(db, insertDataSQL, 0, 0, nullptr);
+
+
+        /*
+        sqlite3_exec(db, "SELECT password FROM logins;", [](void*, int argc, char** argv, char**) {
+            std::cout << "Password: " << argv[0] << std::endl;
+            return 0;
+            }, nullptr, nullptr);
+        */
+
+        system("pause");
+
+        //SQL delete
+        //sqlite3_exec(db, "DROP TABLE IF EXISTS logins;", nullptr, nullptr, nullptr);
+
+
+
+    }
+    else {
+        std::cout << "Error opening database!" << std::endl;
+    }
+    sqlite3_close(db);
+    return 0;
+}
+
+/*
 int main() {
     std::locale::global(std::locale("")); //Ekstra UTF-8 support for Æ, Ø, Å
 
@@ -91,5 +139,6 @@ int main() {
     showDatabaseMenu();
     return 0;
 }
+*/
 
 
