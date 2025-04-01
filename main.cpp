@@ -4,17 +4,23 @@
 #include "console.h" // Til bedre output muligheder i konsol (warning, colors osv)
 #include "encrypter.h"
 #include "sqlite3.h" // SQLite database library
+#include <windows.h> // For searching .db in windows
+
 
 // Forward declaration (så passwordManager.cpp ved at funktionen parseCommand findes et sted)
 void parseCommand(const std::string& input);
 
+//forward declaration (så koden kører denne void først)
+void outputLoginsAfChatGPT();
+
 // For at ungå at skrive 'std::' foran alt såsom std::cout.
 using namespace std;
 
-string dbName = "Database";
+char dbName[100] = "Database.db";
 string pass, confirmPass;
 Console* console = new Console();
 Encrypter* encrypter = new Encrypter();
+sqlite3* db = nullptr;  // Define db pointer only here. It conflicts with the one in commando_handling.cpp. 
 
 
 void showDatabaseSetupPage() 
@@ -27,6 +33,7 @@ void showDatabaseSetupPage()
 
     cout << "\nDatabase navn: ";
     cin >> dbName;
+    strcat_s(dbName, sizeof(dbName), ".db"); //adds string ".db" to the end of dbName
 
     while (true)
     {
@@ -48,6 +55,22 @@ void showDatabaseSetupPage()
     }
 }
 
+void setupDatabase()
+{
+    sqlite3_open(dbName, &db);  // Open or create a database
+
+    //Create database template
+    const char* sql = "CREATE TABLE logins ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "login_name TEXT, "
+        "password TEXT, "
+        "username TEXT, "
+        "email TEXT);";
+
+    sqlite3_exec(db, sql, 0, 0, nullptr); //execute CREATE TABLE
+    sqlite3_close(db);             // Close the database
+}
+
 void showUserAuthenticationPage() {
     cout << "Følgende database vil blive åbnet: " << dbName << endl;
     do {
@@ -62,83 +85,93 @@ void showUserAuthenticationPage() {
     return;
 }
 
-void showDatabaseMenu() {
+void openDatabase() { //Lavet med ChatGPT indtil videre
     string input;
 
-    cout << "PASSWORD MANAGER CONSOLE - " << dbName << endl;
-    cout << "Dine gemte logins\n" << endl;
-    cout << "-----------------\n" << endl;
-    cout << "Database indhold her\n" << endl;
-    cout << "Skriv 'help' for kommandoliste.\n" << endl;
+    //Search for any .db file in project folder
+    WIN32_FIND_DATAA findFileData;
+    HANDLE hFind = FindFirstFileA("*.db", &findFileData);
 
-    while (true) {
-        cout << "> ";
-        getline(cin, input);
-
-        parseCommand(input); // Kald funktionen fra 'commando_handling.cpp'
+    if (hFind != INVALID_HANDLE_VALUE) {
+        strcpy_s(dbName, findFileData.cFileName);
+        FindClose(hFind);
     }
 
+    //Open database
+    if (sqlite3_open(dbName, &db) == SQLITE_OK)
+    {
+        cout << "Database with the name " << dbName << " opened successfully! \n" << endl;
+        cout << "Dine gemte logins" << endl;
+        cout << "----------------- \n" << endl;
+        outputLoginsAfChatGPT();
+        cout << "Skriv 'help' for kommandoliste.\n" << endl;
 
-}
+        while (true) {
+            cout << "> ";
+            getline(cin, input);
 
-
-int main() {
-    sqlite3* db;
-    sqlite3_open("test.db", &db); //create database
-
-    if (sqlite3_open("test.db", &db) == SQLITE_OK) {
-        std::cout << "Database opened successfully!" << std::endl;
-
-
-        //SQL Add 
-
-        const char* sql = "CREATE TABLE logins ("
-            "login_navn TEXT PRIMARY KEY, "
-            "password TEXT, "
-            "username TEXT, "
-            "email TEXT);";
-
-        const char* insertDataSQL = "INSERT INTO logins (login_navn, password, username, email) VALUES "
-            "('Minecraft', 'password1234', 'Notch', 'notch@mojang.com');";
-
-        //sqlite3_exec(db, sql, 0, 0, nullptr);
-        sqlite3_exec(db, insertDataSQL, 0, 0, nullptr);
-
-
-        /*
-        sqlite3_exec(db, "SELECT password FROM logins;", [](void*, int argc, char** argv, char**) {
-            std::cout << "Password: " << argv[0] << std::endl;
-            return 0;
-            }, nullptr, nullptr);
-        */
-
-        system("pause");
-
-        //SQL delete
-        //sqlite3_exec(db, "DROP TABLE IF EXISTS logins;", nullptr, nullptr, nullptr);
-
-
-
+            parseCommand(input); // Kald funktionen fra 'commando_handling.cpp'
+        }
     }
-    else {
+    else
+    {
         std::cout << "Error opening database!" << std::endl;
     }
-    sqlite3_close(db);
-    return 0;
 }
 
-/*
+void outputLoginsAfChatGPT() {
+
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT id, login_name, password, username, email FROM logins;";
+
+    // Check if database is accessible
+    if (!db) {
+        cerr << "Error: Database pointer is null after opening." << endl;
+        return;
+    }
+
+    // Prepare SQL statement
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        cerr << "Error: Failed to prepare SQL statement. " << sqlite3_errmsg(db) << endl;
+        sqlite3_close(db);
+        return;
+    }
+
+    bool hasData = false;
+
+    // Execute query and print results
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        hasData = true;
+        cout << "ID: " << sqlite3_column_int(stmt, 0) << endl;
+        cout << "Login Name: " << (sqlite3_column_text(stmt, 1) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) : "NULL") << endl;
+        cout << "Password: " << (sqlite3_column_text(stmt, 2) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) : "NULL") << endl;
+        cout << "Username: " << (sqlite3_column_text(stmt, 3) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) : "NULL") << endl;
+        cout << "Email: " << (sqlite3_column_text(stmt, 4) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) : "NULL") << endl;
+        cout << "-----------------------------------" << endl;
+    }
+
+    if (!hasData) {
+        cout << "No stored logins found in the database." << endl;
+    }
+
+    // Cleanup
+    sqlite3_finalize(stmt);
+}
+
 int main() {
     std::locale::global(std::locale("")); //Ekstra UTF-8 support for Æ, Ø, Å
 
     if (!encrypter->CheckKey("key.txt")) // Tjek om database-fil ikke eksisterer
     {
         showDatabaseSetupPage();
+        setupDatabase();
     }
-    showUserAuthenticationPage();
-    showDatabaseMenu();
+    //showUserAuthenticationPage();
+    openDatabase();
+
+    sqlite3_close(db);
     return 0;
 }
-*/
+
 
 
