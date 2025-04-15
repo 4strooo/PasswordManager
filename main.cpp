@@ -1,9 +1,7 @@
 #include <iostream>
-#include <string> // Til datatypen 'string'.
-#include <locale> // Til ekstra UTF-8 support for Æ, Ø, Å
 #include "console.h" // Til bedre output muligheder i konsol (warning, colors osv)
 #include "encrypter.h"
-#include "sqlite3.h" // SQLite database library
+#include "database.h"
 #include <windows.h> // For searching .db in windows
 
 
@@ -21,6 +19,7 @@ string pass, confirmPass;
 Console* console = new Console();
 Encrypter* encrypter = new Encrypter();
 sqlite3* db = nullptr;  // Define db pointer only here. It conflicts with the one in commando_handling.cpp. 
+
 
 
 void showDatabaseSetupPage() 
@@ -45,7 +44,7 @@ void showDatabaseSetupPage()
 
         if (pass == confirmPass && pass.length() == 8)
         {
-            encrypter->GenerateKey(pass.c_str());
+            //encrypter->GenerateKey(pass.c_str());
             cout << "Password bekræftet" << endl;
             system("pause");
             system("cls");
@@ -158,18 +157,43 @@ void outputLoginsAfChatGPT() {
     sqlite3_finalize(stmt);
 }
 
-int main() {
-    std::locale::global(std::locale("")); //Ekstra UTF-8 support for Æ, Ø, Å
-
-    if (!encrypter->CheckKey("key.txt")) // Tjek om database-fil ikke eksisterer
+int main() 
+{
+    Console* console = new Console();
+    Encrypter* encrypter = new Encrypter();
+    Database* database = new Database();
+    console->Clear();
+    if (!encrypter->CheckKeyFile("key.txt") || !database->CheckDatabaseFile("data.db"))
     {
-        showDatabaseSetupPage();
-        setupDatabase();
+        console->Print("No account found");
+        console->Print("You have to create a master password for the password manager. Make sure you remember it!");
+        console->Print("");
+        console->Print("Input password (must be 8 characters):");
+        std::string pass = console->GetLine(8);
+        console->Clear();
+        console->Print("Password set");
+        console->Print("Generating encryption keys...");
+        encrypter->GenerateKeys(pass.c_str());
+        console->Print("Saving encryption keys...");
+        encrypter->GenerateKeyFile();
+        console->Print("Setting up database...");
+        database->CreateDatabase();
+        console->Clear();
     }
-    //showUserAuthenticationPage();
-    openDatabase();
+    console->Print("Enter password to log in:");
+    while (true) 
+    {
+        std::string pass = console->GetLine(8);
+        console->Print("");
+        console->Print("Authenticating...");
+        if (encrypter->Login("key.txt", pass.c_str()))
+        {
+            console->Print("Login successful");
+            break;
+        }
+        console->Print("Authentication failed. Try again:");
+    }
 
-    sqlite3_close(db);
     return 0;
 }
 

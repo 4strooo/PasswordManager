@@ -81,7 +81,7 @@ void Encrypter::GenerateKeys(const char* pass)
 void Encrypter::GenerateKeyFile()
 {
 	std::fstream file;
-	file.open("key.txt", std::ios::out | std::ios::binary);
+	file.open("key.txt", std::ios::out | std::ios::binary | std::ios::trunc);
 	unsigned char encryptedBase[8];
 	EncryptChunk(baseStr, encryptedBase);
 	for (int i = 0; i < 8; i++)
