@@ -3,10 +3,9 @@
 #include "encrypter.h"
 #include "DES.h"
 
-Encrypter::Encrypter()
+Encrypter::Encrypter(Console* cmd)
 {
-	encryptionKey = nullptr;
-	baseStr = "$0hxLL0%";
+	console = cmd;
 }
 
 bool Encrypter::CheckKeyFile(const char* path)
@@ -34,6 +33,7 @@ bool Encrypter::Login(const char* path, const char* pass)
 {
 	if (!CheckKeyFile(path))
 	{
+		console->PrintError("AUTHENTICATION FAILED - Key file corrupted or missing");
 		return false;
 	}
 	std::fstream file;
@@ -48,9 +48,11 @@ bool Encrypter::Login(const char* path, const char* pass)
 	{
 		if (plain[i] != baseStr[i])
 		{
+			console->PrintError("AUTHENTICATION FAILED - Wrong password");
 			return false;
 		}
 	}
+	console->PrintComplex("", "LOGIN SUCCESSFUL");
 	return true;
 }
 
@@ -80,6 +82,7 @@ void Encrypter::GenerateKeys(const char* pass)
 
 void Encrypter::GenerateKeyFile()
 {
+	console->Print("Generating encryption keys...");
 	std::fstream file;
 	file.open("key.txt", std::ios::out | std::ios::binary | std::ios::trunc);
 	unsigned char encryptedBase[8];
@@ -91,7 +94,7 @@ void Encrypter::GenerateKeyFile()
 	file.close();
 }
 
-void Encrypter::EncryptChunk(const char* chunk, unsigned char output[8])
+void Encrypter::EncryptChunk(unsigned char chunk[8], unsigned char output[8])
 {
 	unsigned char block[8];
 	for (int i = 0; i < 8; i++)
@@ -135,4 +138,54 @@ void Encrypter::Feistel(unsigned char left[4], unsigned char right[4], int round
 		left[jj] = right[jj];
 		right[jj] = pBoxed[jj];
 	}
+}
+
+std::string Encrypter::EncryptString(std::string str)
+{
+	std::string result;
+	unsigned char chunk[8] = { 0 };
+	int chunkIndex = 0;
+	for (int i = 0; i < str.length(); i++)
+	{
+		chunk[chunkIndex] = str[i];
+		chunkIndex++;
+		if ((i % 8) == 7 || i == (str.length() - 1))
+		{
+			unsigned char encrypted[8];
+			EncryptChunk(chunk, encrypted);
+			for (int ii = 0; ii < 8; ii++)
+			{
+				result.push_back(encrypted[ii]);
+				chunk[ii] = '\0';
+			}
+			chunkIndex = 0;
+		}
+	}
+	return result;
+}
+
+uString Encrypter::DecryptString(uString str)
+{
+	uString result;
+	int len = str.length();
+	if ((len % 8) != 0)
+	{
+		console->PrintError("DECRYPTION ERROR - Text improperly encrypted or corrupted");
+		return result;
+	}
+	for (int i = 0; i < len / 8; i++)
+	{
+		unsigned char chunk[8] = { 0 };
+		for (int ii = 0; ii < 8; ii++)
+		{
+			chunk[ii] = str[ii + (i * 8)];
+		}
+		unsigned char decrypted[8];
+		DecryptChunk(chunk, decrypted);
+		for (int ii = 0; ii < 8; ii++)
+		{
+			result.push_back(decrypted[ii]);
+		}
+	}
+	return result;
 }

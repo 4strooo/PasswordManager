@@ -2,200 +2,247 @@
 #include "console.h" // Til bedre output muligheder i konsol (warning, colors osv)
 #include "encrypter.h"
 #include "database.h"
-#include <windows.h> // For searching .db in windows
 
-
-// Forward declaration (så passwordManager.cpp ved at funktionen parseCommand findes et sted)
-void parseCommand(const std::string& input);
-
-//forward declaration (så koden kører denne void først)
-void outputLoginsAfChatGPT();
-
-// For at ungå at skrive 'std::' foran alt såsom std::cout.
-using namespace std;
-
-char dbName[100] = "Database.db";
-string pass, confirmPass;
-Console* console = new Console();
-Encrypter* encrypter = new Encrypter();
-sqlite3* db = nullptr;  // Define db pointer only here. It conflicts with the one in commando_handling.cpp. 
-
-
-
-void showDatabaseSetupPage() 
+struct Systems
 {
-    system("cls"); // Clears screen
-    cout << "===== PASSWORD MANAGER CONSOLE =====\n";
-    cout << "\n";
-    cout << "Ingen database er registreret.\n";
-    cout << "Skriv et database navn og et master-password for at oprette en ny:\n";
-
-    cout << "\nDatabase navn: ";
-    cin >> dbName;
-    strcat_s(dbName, sizeof(dbName), ".db"); //adds string ".db" to the end of dbName
-
-    while (true)
+    Console* console;
+    Encrypter* encrypter;
+    Database* database;
+    bool done;
+    Systems()
     {
-        cout << "Opret password på 8 karakterer: ";
-        cin >> pass;
-
-        cout << "Bekræft password: ";
-        cin >> confirmPass;
-
-        if (pass == confirmPass && pass.length() == 8)
-        {
-            //encrypter->GenerateKey(pass.c_str());
-            cout << "Password bekræftet" << endl;
-            system("pause");
-            system("cls");
-            break;
-        } 
-        cout << "Invalid password. Prøv igen." << endl;
+        console = new Console();
+        encrypter = new Encrypter(console);
+        database = new Database(console);
+        done = false;
     }
-}
-
-void setupDatabase()
-{
-    sqlite3_open(dbName, &db);  // Open or create a database
-
-    //Create database template
-    const char* sql = "CREATE TABLE logins ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "login_name TEXT, "
-        "password TEXT, "
-        "username TEXT, "
-        "email TEXT);";
-
-    sqlite3_exec(db, sql, 0, 0, nullptr); //execute CREATE TABLE
-    sqlite3_close(db);             // Close the database
-}
-
-void showUserAuthenticationPage() {
-    cout << "Følgende database vil blive åbnet: " << dbName << endl;
-    do {
-        cout << "Skriv password: ";
-        cin >> confirmPass;
-        if (pass != confirmPass)
-            cout << "Forkert password. Prøv igen." << endl;
-    } while (pass != confirmPass);  // Loop indtil passwords matcher
-
-    cout << "Password er korrekt. Dekrypterer database eller sådan noget" << endl;
-    system("cls");
-    return;
-}
-
-void openDatabase() { //Lavet med ChatGPT indtil videre
-    string input;
-
-    //Search for any .db file in project folder
-    WIN32_FIND_DATAA findFileData;
-    HANDLE hFind = FindFirstFileA("*.db", &findFileData);
-
-    if (hFind != INVALID_HANDLE_VALUE) {
-        strcpy_s(dbName, findFileData.cFileName);
-        FindClose(hFind);
-    }
-
-    //Open database
-    if (sqlite3_open(dbName, &db) == SQLITE_OK)
+    ~Systems()
     {
-        cout << "Database with the name " << dbName << " opened successfully! \n" << endl;
-        cout << "Dine gemte logins" << endl;
-        cout << "----------------- \n" << endl;
-        outputLoginsAfChatGPT();
-        cout << "Skriv 'help' for kommandoliste.\n" << endl;
-
-        while (true) {
-            cout << "> ";
-            getline(cin, input);
-
-            parseCommand(input); // Kald funktionen fra 'commando_handling.cpp'
-        }
+        delete console;
+        delete encrypter;
+        delete database;
     }
-    else
-    {
-        std::cout << "Error opening database!" << std::endl;
-    }
-}
+};
 
-void outputLoginsAfChatGPT() {
+void Setup(Systems* sys);
+void Login(Systems* sys);
+void HomeScreen(Systems* sys);
+void GeneratePassword(Systems* sys);
+void AddLogin(Systems* sys);
+void PrintLogins(Systems* sys);
+void FindLogin(Systems* sys);
+void Exit(Systems* sys);
 
-    sqlite3_stmt* stmt;
-    const char* sql = "SELECT id, login_name, password, username, email FROM logins;";
-
-    // Check if database is accessible
-    if (!db) {
-        cerr << "Error: Database pointer is null after opening." << endl;
-        return;
-    }
-
-    // Prepare SQL statement
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        cerr << "Error: Failed to prepare SQL statement. " << sqlite3_errmsg(db) << endl;
-        sqlite3_close(db);
-        return;
-    }
-
-    bool hasData = false;
-
-    // Execute query and print results
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        hasData = true;
-        cout << "ID: " << sqlite3_column_int(stmt, 0) << endl;
-        cout << "Login Name: " << (sqlite3_column_text(stmt, 1) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) : "NULL") << endl;
-        cout << "Password: " << (sqlite3_column_text(stmt, 2) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) : "NULL") << endl;
-        cout << "Username: " << (sqlite3_column_text(stmt, 3) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) : "NULL") << endl;
-        cout << "Email: " << (sqlite3_column_text(stmt, 4) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) : "NULL") << endl;
-        cout << "-----------------------------------" << endl;
-    }
-
-    if (!hasData) {
-        cout << "No stored logins found in the database." << endl;
-    }
-
-    // Cleanup
-    sqlite3_finalize(stmt);
-}
+void FillLogin(Systems* sys, std::string& title, std::string& email, std::string& name, std::string& pass);
 
 int main() 
 {
-    Console* console = new Console();
-    Encrypter* encrypter = new Encrypter();
-    Database* database = new Database();
-    console->Clear();
-    if (!encrypter->CheckKeyFile("key.txt") || !database->CheckDatabaseFile("data.db"))
+    Systems* sys = new Systems();
+    sys->console->Clear();
+    if (!sys->encrypter->CheckKeyFile("key.txt") || !sys->database->CheckDatabaseFile("data.db"))
     {
-        console->Print("No account found");
-        console->Print("You have to create a master password for the password manager. Make sure you remember it!");
-        console->Print("");
-        console->Print("Input password (must be 8 characters):");
-        std::string pass = console->GetLine(8);
-        console->Clear();
-        console->Print("Password set");
-        console->Print("Generating encryption keys...");
-        encrypter->GenerateKeys(pass.c_str());
-        console->Print("Saving encryption keys...");
-        encrypter->GenerateKeyFile();
-        console->Print("Setting up database...");
-        database->CreateDatabase();
-        console->Clear();
+        Setup(sys);
     }
-    console->Print("Enter password to log in:");
-    while (true) 
-    {
-        std::string pass = console->GetLine(8);
-        console->Print("");
-        console->Print("Authenticating...");
-        if (encrypter->Login("key.txt", pass.c_str()))
-        {
-            console->Print("Login successful");
-            break;
-        }
-        console->Print("Authentication failed. Try again:");
-    }
-
+    Login(sys);
+    sys->database->Open();
+    HomeScreen(sys);
+    sys->database->Close();
+    delete sys;
     return 0;
 }
 
+void Setup(Systems* sys)
+{
+    sys->console->Print("No previous data found");
+    sys->console->Print("You have to create a master password for the password manager. Make sure you remember it!");
+    sys->console->Break();
+    sys->console->PrintComplex("Enter password (must be ? characters long):", "8");
+    std::string pass = sys->console->GetLine(8);
+    sys->console->Clear();
+    sys->console->PrintComplex("", "PASSWORD SET");;
+    sys->encrypter->GenerateKeys(pass.c_str());
+    sys->encrypter->GenerateKeyFile();
+    sys->database->CreateDatabase();
+    sys->console->PrintComplex("", "SETUP COMPLETE");
+    sys->console->Break();
+}
+
+void Login(Systems* sys)
+{
+    sys->console->Print("Enter password to log in:");
+    while (true)
+    {
+        std::string pass = sys->console->GetLine(8);
+        sys->console->Print("");
+        sys->console->Print("Authenticating...");
+        if (sys->encrypter->Login("key.txt", pass.c_str()))
+        {
+            break;
+        }
+    }
+}
+
+void HomeScreen(Systems* sys)
+{
+    while (!sys->done) 
+    {
+        sys->console->Clear();
+        sys->console->Print("Enter a number:");
+        sys->console->PrintComplex("", "1 - GENERATE PASSWORD");
+        sys->console->Print("");
+        sys->console->PrintComplex("", "2 - ADD NEW LOGIN");
+        sys->console->Print("");
+        sys->console->PrintComplex("", "3 - PRINT ALL SAVED LOGINS");
+        sys->console->Print("");
+        sys->console->PrintComplex("", "4 - EDIT LOGIN");
+        sys->console->Print("");
+        sys->console->PrintComplex("", "0 - EXIT");
+        sys->console->Print("");
+        void (*nextFunc[5])(Systems*) = { Exit, GeneratePassword, AddLogin, PrintLogins, FindLogin };
+        int num = sys->console->GetNum(0, 4);
+        sys->console->Clear();
+        nextFunc[num](sys);
+    }
+}
+
+void Exit(Systems* sys)
+{
+    sys->console->Print("Exiting...");
+    sys->done = true;
+}
+
+void GeneratePassword(Systems* sys)
+{
+    sys->console->PrintComplex("Enter the ??????? amount of characters your password should have:", "minimum");
+    int min = sys->console->GetNum(4, 32);
+    sys->console->PrintComplex("Enter the ??????? amount of characters your password should have:", "maximum");
+    int max = sys->console->GetNum(min, 32);
+    sys->console->Print("Enter how many passwords you would like to generate:");
+    int amount = sys->console->GetNum(1, 128);
+    sys->console->Break();
+    std::srand(std::time(0));
+    for (int i = 0; i < amount; i++)
+    {
+        int charCount = (std::rand() % (max - min + 1)) + min;
+        std::string result;
+        for (int j = 0; j < charCount; j++)
+        {
+            char c = (std::rand() % ('~' - '!' + 1)) + '!';
+            result.push_back(c);
+        }
+        sys->console->Print(result.c_str());
+    }
+    sys->console->Break();
+    sys->console->PrintComplex("Enter ? to return:", "0");
+    sys->console->GetNum(0, 0);
+}
+
+void AddLogin(Systems* sys)
+{
+    std::string loginInfo[4];
+    FillLogin(sys, loginInfo[0], loginInfo[1], loginInfo[2], loginInfo[3]);
+    sys->console->Break();
+    sys->console->Print("Encrypting login...");
+    for (int i = 0; i < 4; i++)
+    {
+        loginInfo[i] = sys->encrypter->EncryptString(loginInfo[i]);
+    }
+    sys->console->PrintComplex("", "ENCRYPTION SUCCESSFUL");
+    sys->database->InsertLogin(loginInfo);
+    sys->console->Break();
+    sys->console->PrintComplex("Enter ? to return:", "0");
+    sys->console->GetNum(0, 0);
+}
+
+void PrintLogins(Systems* sys)
+{
+    int num = sys->database->PrepPrintAll();
+    if (num < 1)
+    {
+        return;
+    }
+    uString** logins = new uString*[num];
+    for (int i = 0; i < num; i++)
+    {
+        logins[i] = new uString[4];
+        sys->database->GetRaw(logins[i]);
+    }
+    sys->database->Cleanup();
+    sys->console->Print("Decrypting logins...");
+    for (int i = 0; i < num; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            logins[i][j] = sys->encrypter->DecryptString(logins[i][j]);
+        }
+    }
+    sys->console->Clear();
+    sys->console->PrintComplex("", "==== SAVED LOGINS ====");
+    sys->console->StartTable();
+    for (int i = 0; i < num; i++)
+    {
+        sys->console->AddRow(logins[i], i + 1);
+        delete[] logins[i];
+    }
+    delete[] logins;
+    sys->console->CloseTable();
+    sys->console->PrintComplex("Enter ? to return:", "0");
+    sys->console->GetNum(0, 0);
+}
+
+void FindLogin(Systems* sys)
+{
+    int max = sys->database->GetLoginCount();
+    if (max < 1)
+    {
+        return;
+    }
+    sys->console->PrintComplex("Enter the ?? for the login you want to edit:", "ID");
+    int id = sys->console->GetNum(1, max);
+    while (true) 
+    {
+        sys->database->PrepFind(id);
+        uString login[4];
+        sys->database->GetRaw(login);
+        sys->database->Cleanup();
+        for (int i = 0; i < 4; i++)
+        {
+            login[i] = sys->encrypter->DecryptString(login[i]);
+        }
+        sys->console->Break();
+        sys->console->StartTable();
+        sys->console->AddRow(login, id);
+        sys->console->CloseTable();
+        sys->console->PrintComplex("Enter ? to edit this login:", "1");
+        sys->console->PrintComplex("Enter ? to return:", "0");
+        int choice = sys->console->GetNum(0, 1);
+        if (choice == 0)
+        {
+            break;
+        }
+        sys->console->Break();
+        std::string newInfo[4];
+        FillLogin(sys, newInfo[0], newInfo[1], newInfo[2], newInfo[3]);
+        sys->console->Print("Encrypting login...");
+        for (int i = 0; i < 4; i++)
+        {
+            newInfo[i] = sys->encrypter->EncryptString(newInfo[i]);
+        }
+        sys->console->PrintComplex("", "ENCRYPTION SUCCESSFUL");
+        sys->database->UpdateLogin(newInfo, id);
+    }
+}
+
+void FillLogin(Systems* sys, std::string& title, std::string& email, std::string& name, std::string& pass)
+{
+    sys->console->PrintComplex("Enter a ????? for the login:", "title");
+    title = sys->console->GetLine();
+    sys->console->PrintComplex("Enter an ????? ???????:", "emailaddress");
+    email = sys->console->GetEmail();
+    sys->console->PrintComplex("Enter a ????????:", "username");
+    name = sys->console->GetLine();
+    sys->console->PrintComplex("Enter a ????????:", "password");
+    pass = sys->console->GetLine();
+}
 
 
