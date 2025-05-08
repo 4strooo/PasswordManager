@@ -1,6 +1,7 @@
 #include "database.h"
 #include "encrypter.h"
 #include <iostream>
+
 Database::Database(Console* cmd)
 {
 	console = cmd;
@@ -18,14 +19,14 @@ bool Database::CheckDatabaseFile(const char* path)
 		{
 			if (sqlite3_column_int(stmt, 0) == 1)
 			{
-				sqlite3_finalize(stmt);
-				sqlite3_close(db);
+				Cleanup();
+				Close();
 				return true;
 			}
 		}
 	}
-	sqlite3_finalize(stmt);
-	sqlite3_close(db);
+	Cleanup();
+	Close();
 	return false;
 }
 
@@ -45,8 +46,8 @@ void Database::CreateDatabase()
 		{
 			console->PrintError("SQL ERROR - Could not create table");
 		}
-		sqlite3_finalize(stmt);
-		sqlite3_close(db);
+		Cleanup();
+		Close();
 		return;
 	}
 	console->PrintError("COULD NOT CREATE DATABASE FILE");
@@ -65,11 +66,8 @@ void Database::Open()
 	}
 }
 
-void Database::InsertLogin(std::string login[4])
+void Database::BindLogin(std::string login[4])
 {
-	console->Print("Saving login...");
-	const char* query = "INSERT INTO logins (login_name, email, username, password) VALUES (?1, ?2, ?3, ?4)";
-	SQL_Prepare(query);
 	for (int i = 0; i < 4; i++)
 	{
 		int len = login[i].length();
@@ -84,13 +82,21 @@ void Database::InsertLogin(std::string login[4])
 		}
 		delete[] buffer;
 	}
+}
+
+void Database::InsertLogin(std::string login[4])
+{
+	console->Print("Saving login...");
+	const char* query = "INSERT INTO logins (login_name, email, username, password) VALUES (?1, ?2, ?3, ?4)";
+	SQL_Prepare(query);
+	BindLogin(login);
 	if (sqlite3_step(stmt) != SQLITE_DONE)
 	{
 		console->PrintError("SQL ERROR - Could not save login");
 	}
 	else
 	{
-		console->PrintComplex("", "LOGIN SAVED");
+		console->PrintCenter("LOGIN SAVED", GREEN);
 	}
 	sqlite3_finalize(stmt);
 }
@@ -100,20 +106,7 @@ void Database::UpdateLogin(std::string login[4], int id)
 	console->Print("Saving login...");
 	const char* query = "UPDATE logins SET (login_name, email, username, password) = (?1, ?2, ?3, ?4) WHERE id = ?5";
 	SQL_Prepare(query);
-	for (int i = 0; i < 4; i++)
-	{
-		int len = login[i].length();
-		unsigned char* buffer = new unsigned char[len];
-		for (int ii = 0; ii < len; ii++)
-		{
-			buffer[ii] = login[i][ii];
-		}
-		if (sqlite3_bind_blob(stmt, i + 1, buffer, len, SQLITE_TRANSIENT) != SQLITE_OK)
-		{
-			console->PrintError("SERIALIZATION FAILED - Could not convert data to binary object");
-		}
-		delete[] buffer;
-	}
+	BindLogin(login);
 	sqlite3_bind_int(stmt, 5, id);
 	if (sqlite3_step(stmt) != SQLITE_DONE)
 	{
@@ -121,7 +114,7 @@ void Database::UpdateLogin(std::string login[4], int id)
 	}
 	else
 	{
-		console->PrintComplex("", "LOGIN SAVED");
+		console->PrintCenter("LOGIN SAVED", GREEN);
 	}
 	sqlite3_finalize(stmt);
 }
@@ -134,6 +127,14 @@ int Database::GetLoginCount()
 	if (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		count = sqlite3_column_int(stmt, 0);
+	}
+	if (count == 0)
+	{
+		console->PrintError("DATABASE ERROR - No entries found in login database");
+	}
+	else if (count < 0)
+	{
+		console->PrintError("DATABASE ERROR - Could not access database");
 	}
 	sqlite3_finalize(stmt);
 	return count;

@@ -1,17 +1,17 @@
 #include <iostream>
 #include "console.h"
-#define DARKGREEN 2
-#define GREY 7
-#define GREEN 10
-#define RED 12
-#define WHITE 15
+#define CP_1252 1252
+#define ROW_WIDTH 100
 
 Console::Console()
 {
 	handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(handle, &info);
-	consoleCenter = info.dwSize.X / 2;
+	consoleSize = info.dwSize.X;
+	SetConsoleCP(CP_1252);
+	SetConsoleOutputCP(CP_1252);
+	
 }
 
 void Console::Print(const char* text)
@@ -26,21 +26,15 @@ void Console::PrintError(const char* text)
 	std::cout << "ERROR: " << text << std::endl;
 }
 
-void Console::PrintComplex(const char* text, const char* params)
+void Console::PrintComplex(const char* text, const char* params, int col)
 {
-	if (strlen(text) == 0)
-	{
-		SetColor(GREEN);
-		std::cout << Center(params) << std::endl;
-		return;
-	}
 	SetColor(GREY);
 	int currentParam = 0;
 	for (int i = 0; i < strlen(text); i++)
 	{
 		if (text[i] == '?')
 		{
-			SetColor(GREEN);
+			SetColor(col);
 			std::cout << params[currentParam];
 			currentParam++;
 			SetColor(GREY);
@@ -49,6 +43,12 @@ void Console::PrintComplex(const char* text, const char* params)
 		std::cout << text[i];
 	}
 	std::cout << std::endl;
+}
+
+void Console::PrintCenter(const char* text, int col)
+{
+	SetColor(col);
+	std::cout << Center(text) << std::endl;
 }
 
 std::string Console::GetLine()
@@ -148,7 +148,7 @@ int Console::GetNum(int min, int max)
 
 std::string Console::Center(const char* text)
 {
-	int pos = ((consoleCenter * 2) - strlen(text))/2;
+	int pos = (consoleSize - strlen(text))/2;
 	std::string result(pos, ' ');
 	result += text;
 	return result;
@@ -156,15 +156,16 @@ std::string Console::Center(const char* text)
 
 void Console::Break()
 {
-	SetColor(DARKGREEN);
-	std::string line(consoleCenter, '-');
-	std::cout << line << line << std::endl;
+	std::string line(consoleSize, '-');
+	PrintCenter(line.c_str(), DARKGREEN);
 }
 
 void Console::Clear()
 {
 	system("cls");
-	PrintComplex("", "======= PASSWORD MANAGER CONSOLE =======");
+	TABLE_Break(26, '=');
+	PrintCenter("| PASSWORD MANAGER CONSOLE |", DARKGREEN);
+	TABLE_Break(26, '=');
 	Print("");
 	Print("");
 }
@@ -176,14 +177,13 @@ void Console::SetColor(int col)
 
 void Console::StartTable()
 {
-	int row = 100;
-	if ((consoleCenter * 2) < (row + 2))
+	if (consoleSize < (ROW_WIDTH + 2))
 	{
 		PrintError("CONSOLE ERROR - Window too small to draw table");
 	}
-	TABLE_Break(row, '=');
+	TABLE_Break(ROW_WIDTH, '=');
 	std::string names[5] = { "ID", "TITLE", "EMAIL ADDRESS", "USERNAME", "PASSWORD" };
-	std::string nextRow = TABLE_CreateRow(names, row);
+	std::string nextRow = TABLE_CreateRow(names, ROW_WIDTH);
 	std::string print = "|" + nextRow + "|";
 	print = Center(print.c_str());
 	int counter = 0;
@@ -195,13 +195,13 @@ void Console::StartTable()
 			counter++;
 		}
 	}
-	SetColor(GREEN);
+	SetColor(DARKGREEN);
 	std::cout << print << std::endl;
 }
 
 void Console::AddRow(uString login[4], int index)
 {
-	TABLE_Break(100, '-');
+	TABLE_Break(ROW_WIDTH, '-');
 	int cellSizes[5] = { 5, 19, 34, 19, 19 };
 	std::string values[5];
 	values[0] = std::to_string(index);
@@ -231,12 +231,12 @@ void Console::AddRow(uString login[4], int index)
 				}
 			}
 		}
-		std::string row = TABLE_CreateRow(nextRow, 100);
+		std::string row = TABLE_CreateRow(nextRow, ROW_WIDTH);
 		std::string print = "|" + row + "|";
 		print = Center(print.c_str());
-		SetColor(GREY);
 		for (int i = 0; i < print.length(); i++)
 		{
+			SetColor(GREY);
 			bool isGreen = false;
 			for (int j = 0; j < 6; j++)
 			{
@@ -248,24 +248,19 @@ void Console::AddRow(uString login[4], int index)
 			}
 			if (isGreen)
 			{
-				SetColor(GREEN);
-				std::cout << print[i];
-				SetColor(GREY);
+				SetColor(DARKGREEN);
 			}
-			else 
-			{
-				std::cout << print[i];
-			}
+			std::cout << print[i];
 		}
-		std::cout << std::endl;
+		Print("");
 	}
 }
 
 void Console::CloseTable()
 {
-	TABLE_Break(100, '=');
+	TABLE_Break(ROW_WIDTH, '=');
 	Print("");
-	PrintComplex("", "TABLE PRINTED");
+	PrintCenter("TABLE PRINTED", GREEN);
 	Break();
 }
 
@@ -273,7 +268,7 @@ void Console::TABLE_Break(int len, char c)
 {
 	std::string edge(len, c);
 	std::string line = '+' + edge + '+';
-	PrintComplex("", line.c_str());
+	PrintCenter(line.c_str(), DARKGREEN);
 }
 
 std::string Console::TABLE_PadCell(std::string text, int len)

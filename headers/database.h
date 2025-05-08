@@ -10,6 +10,7 @@ public:
 	void CreateDatabase();
 	int SQL_Prepare(const char* statement);
 	void Open();
+	void BindLogin(std::string login[4]);
 	void InsertLogin(std::string login[4]);
 	void UpdateLogin(std::string login[4], int id);
 	int GetLoginCount();

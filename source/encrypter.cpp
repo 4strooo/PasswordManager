@@ -52,7 +52,7 @@ bool Encrypter::Login(const char* path, const char* pass)
 			return false;
 		}
 	}
-	console->PrintComplex("", "LOGIN SUCCESSFUL");
+	console->PrintCenter("LOGIN SUCCESSFUL", GREEN);
 	return true;
 }
 
